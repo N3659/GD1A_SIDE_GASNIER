@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" /><title>SideScroller
+    </title>
+    <script
+src="//cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
+    <style type="text/css"> body { margin: 0; }</style>
+</head>
+<body>
+<script type="text/javascript">
+
+
+    var config = {
+        type: Phaser.AUTO,
+        width: 800, height: 600,
+        physics: {
+            default: 'arcade',
+            arcade: {
+                gravity: { y: 300 },
+                debug: false
+}},
+        scene: {preload: preload, create: create, update: update }
+    };
+    
+new Phaser.Game(config);
+
+function preload(){
+
+
+    // chargement tuiles de jeu
+    this.load.image("Phaser_tuilesdejeu", "assets/tuilesJeu.png");
+
+    this.load.image("Background", "assets/Background_final.png")
+
+    //chargement de l'image plateforme
+    this.load.image("plateforme", "assets/plateforme_objet.png")
+
+//chargement de l'UI du niveau
+    this.load.image("UI", "assets/UI.png")
+
+    //tentative de mettre un ecran de game over
+    screenGameOver = this.load.image("gameOver", "assets/gameOver_screen.png")
+
+
+    // chargement de la carte
+    this.load.tilemapTiledJSON("carte", "Niveau/map.json");  
+
+    //chargement des sprites
+
+    this.load.spritesheet('idle_perso','assets/sprite_idle_perso-Sheet.png',
+    { frameWidth: 32, frameHeight: 64 });
+    //idle (perso immobile)
+
+    this.load.spritesheet('walk_perso','assets/walk_sprite_perso-Sheet.png',
+    { frameWidth: 32, frameHeight: 64 });
+    //walk (mouvement)
+
+    this.load.spritesheet('jump_perso','assets/jump_perso_sprite-Sheet.png',
+    { frameWidth: 32, frameHeight: 64 });
+    //jump (au moment de sauter)
+
+    this.load.spritesheet('getUp_perso','assets/getUp_perso_sprite-Sheet.png',
+    { frameWidth: 32, frameHeight: 64 });
+    //get up (atterrisage)
+
+    this.load.spritesheet('atk_perso','assets/atk_perso_sprite-Sheet.png',
+    { frameWidth: 32, frameHeight: 64 });
+    //attaque
+
+    this.load.spritesheet('mob_walk','assets/Mobs_walk-Sheet.png',
+    { frameWidth: 32, frameHeight: 64 });
+    //mob walk (mouvement des monstres/ennemis)
+
+    this.load.spritesheet('piece','assets/piece-Sheet-Sheet.png',
+    { frameWidth: 32, frameHeight: 32 });    
+    //piece (assets pour les collectibles)
+
+    
+}
+
+//creation des variables (piece co et collect etaient fait pour un affichage des pieces)
+var player;
+var GameOver;
+var pieceCo
+var collect
+
+function create (){
+    
+    //chargement de l'image du background et positionnement
+    this.add.image(800, 800, 'Background');
+
+    //tentative d'affichage du nombre de piece collectées
+    collect=this.add.text(16,16,'Pieces : 0',{fontSize:'40',fill:'#FFF'});
+    
+    //initialisation de gameOver à false
+    GameOver = false
+    
+    //touches
+    cursors = this.input.keyboard.createCursorKeys();
+    clavier = this.input.keyboard.addKeys('Q,D,SPACE');
+
+    // chargement de la carte
+    const carteDuNiveau = this.add.tilemap("carte");
+
+    // chargement du jeu de tuiles
+    const tileset = carteDuNiveau.addTilesetImage(
+          "Tileset3.0",
+          "Phaser_tuilesdejeu"
+        );  
+
+    // chargement du calque calque_background_2
+    const Calque_background_2 = carteDuNiveau.createLayer(
+          "Calque_background_2",
+          tileset
+        );
+
+    // chargement du calque Calque_plateformes
+    const Calque_plateformes = carteDuNiveau.createLayer(
+          "Calque_plateformes",
+          tileset
+        );  
+
+    //Chargement du calque de pics
+    const Calque_pics = carteDuNiveau.createLayer(
+        "Calque_pics",
+        tileset
+    );
+
+    //chargement du calque de l'eau empoisonnée
+    const Calque_eau_poison = carteDuNiveau.createLayer(
+        "Calque_eau_poison",
+        tileset
+    );
+
+    //initialisation du calque objet platforme (pour ne pas avoir un bloc de 32x32 comme plateforme "fine")
+    plateforme = this.physics.add.group ({immovable:true, allowGravity:false})
+    Calque_plateforme3 = carteDuNiveau.getObjectLayer("Calque_plateforme3")
+    Calque_plateforme3.objects.forEach(Calque_plateforme3 => {
+        const p1 = plateforme.create(Calque_plateforme3.x + 16, Calque_plateforme3.y + 29, "plateforme")
+
+    });
+
+    //initialisation du calque objet pieces/collectibles
+    collectible = this.physics.add.group ({immovable:true, allowGravity:false})
+    Calque_collectible = carteDuNiveau.getObjectLayer("Calque_collectible")
+    Calque_collectible.objects.forEach(Calque_collectible => {
+        const p2 = collectible.create(Calque_collectible.x + 16, Calque_collectible.y + 10, "piece")
+
+    });
+
+
+
+    // définition des tuiles de plateformes qui sont solides
+    // utilisation de la propriété estSolide
+    Calque_plateformes.setCollisionByProperty({ estSolide: true });
+    Calque_pics.setCollisionByProperty({ estSolide: true });
+    Calque_eau_poison.setCollisionByProperty({estSolide: true});
+    
+    //initialisation des limites du niveau
+    this.physics.world.setBounds(0, 0, 1600, 1600);
+
+    //  ajout du champs de la caméra de taille identique à celle du monde
+    this.cameras.main.setBounds(0, 0, 1600, 1600);
+
+    
+    
+
+//joueur
+
+    player = this.physics.add.sprite(0, 0, 'idle_perso');
+    //Le joueur à des colisions avec les limites du monde 
+    player.setCollideWorldBounds(true);
+    //la caméraa suit le joueur
+    this.cameras.main.startFollow(player);
+
+    // Definition des collisions et des fonction de game over et de collect des pieces
+    this.physics.add.collider(player, Calque_plateformes);
+    this.physics.add.collider(player, Calque_pics, gameOver, null, this);
+    this.physics.add.collider(player, Calque_eau_poison, gameOver, null, this);
+    this.physics.add.collider(player, collectible, attraper, null, this);
+    this.physics.add.collider(player, plateforme)
+
+
+    //tentative d'animer la piece collectable
+    this.anims.create({
+        
+        frames: this.anims.generateFrameNumbers('piece', {start:0,end:11}),
+        frameRate: 10,
+        repeat: 1
+    });
+
+    //tentative d'animer le perso immobile
+    this.anims.create({
+        
+        frames: this.anims.generateFrameNumbers('idle_perso', {start:0,end:6}),
+        frameRate: 10,
+        repeat: -1
+    });
+
+    //animation du perso s'il va à gauche
+    this.anims.create({
+        key: 'left',
+        frames: this.anims.generateFrameNumbers('walk_perso', {start:0,end:10}),
+        frameRate: 20,
+        repeat: -1
+    });
+    
+    //tentative d'animer le saut du perso
+    this.anims.create({
+        key: 'up',
+        frames: this.anims.generateFrameNumbers('jump_perso', {start:0,end:4}),
+        frameRate: 20,
+        repeat: -1
+
+    });
+
+    //animation du perso s'il va à droite
+    this.anims.create({
+        key: 'right',
+        frames: this.anims.generateFrameNumbers('walk_perso', {start:0,end:5}),
+        frameRate: 20,
+        repeat: -1
+});
+
+    //tentative de faire marcher un mob
+    this.anims.create({
+    frames: this.anims.generateFrameNumbers('mob_walk', {start:0,end:3}),
+    frameRate: 20,
+    repeat: -1
+});
+
+    //animation d'attaque (flash) du perso
+    this.anims.create({
+    key: 'down',
+    frames: this.anims.generateFrameNumbers('atk_perso', {start:0,end:1}),
+    frameRate: 20,
+    repeat: -1
+});
+
+
+}
+
+//fonction de gameOver par les pics
+function gameOver(player, Calque_pics){
+    this.physics.pause();
+    player.setTint(0xff0000);
+    GameOver = true;
+}
+
+//fonction de gameOver par le poison
+function gameOver(player, Calque_eau_poison){
+    this.physics.pause();
+    player.setTint(0xff0000);
+    GameOver = true;
+}
+
+//fonction de collect des pieces
+function attraper(player, collectible){
+    collectible.disableBody(true, true);
+    pieceCo += 10; //tentative d'ajouter un score piece
+    collect.setText('Piece: ' + pieceCo); //tentative d'affichage du score piece
+}
+
+function update (){
+
+    //s'il y a game over alors le jeu s'arrête totalement
+    if (GameOver){return;}
+
+
+    if (cursors.left.isDown || clavier.Q.isDown){ //si la touche gauche est appuyée
+        player.setVelocityX(-120); //alors vitesse négative en X
+        player.anims.play('left', true); 
+        player.setFlipX(true); //et animation => gauche
+    }
+
+    else if (cursors.right.isDown || clavier.D.isDown){ //sinon si la touche droite est appuyée
+        player.setVelocityX(120); //alors vitesse positive en X
+        player.anims.play('right', true);
+        player.setFlipX(false); //et animation => droite
+    }
+
+    else if (cursors.down.isDown && player.body.blocked.down){//Si le joueur appui sur bas et qu'il est au sol
+        player.setVelocityX(0);//il s'arrête
+        player.anims.play('down', true);//l'animation d'attaque se joue
+    }
+
+    else{
+        player.setVelocityX(0)//sinon le joueur s'arrête
+        player.anims.stop();//l'animation s'arrête
+    }
+
+    if (cursors.up.isDown && player.body.blocked.down || clavier.SPACE.isDown && player.body.blocked.down){
+    //si touche haut appuyée ET que le perso touche le sol
+        player.setVelocityY(-250); //alors vitesse verticale négative
+    //(on saute)
+    }
+    if (cursors.down.isDown){
+    //si touche bas appuyée
+        player.setVelocityY(350); //alors vitesse verticale positive
+    //(on atterri (fast fall))
+    }
+ 
+    if (cursors.up.isDown && player.body.blocked.right){//si le joueur appui sur haut et qu'il est bloqué/collé a droite
+        player.setVelocityY(-250);//Il escalade
+        player.setVelocityX(-250)//il rebondit
+        player.setFlipX(true);
+    }
+
+    if (cursors.up.isDown && player.body.blocked.left){//si le joueur appui sur haut et qu'il est bloqué/collé a gauche
+        player.setVelocityY(-250);//Il escalade
+        player.setVelocityX(250)//il rebondit
+        player.setFlipX(false);
+    }
+}
+
+//GRAND MERCI à Alexandre raillot qui m'as beaucoup aidé
+
+</script>
+</body>
+</html>
